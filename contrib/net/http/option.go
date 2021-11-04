@@ -21,6 +21,7 @@ type config struct {
 	analyticsRate float64
 	spanOpts      []ddtrace.StartSpanOption
 	finishOpts    []ddtrace.FinishOption
+	resourceNamer func(*http.Request) string
 }
 
 // MuxOption has been deprecated in favor of Option.
@@ -43,6 +44,9 @@ func defaults(cfg *config) {
 	if !math.IsNaN(cfg.analyticsRate) {
 		cfg.spanOpts = append(cfg.spanOpts, tracer.Tag(ext.EventSampleRate, cfg.analyticsRate))
 	}
+
+	// not sure this is the right thing for a default, but it's only used in the dynamic name case
+	cfg.resourceNamer = func(_ *http.Request) string { return cfg.serviceName }
 }
 
 // WithServiceName sets the given service name for the returned ServeMux.
@@ -82,6 +86,28 @@ func WithAnalyticsRate(rate float64) MuxOption {
 func WithSpanOptions(opts ...ddtrace.StartSpanOption) Option {
 	return func(cfg *config) {
 		cfg.spanOpts = append(cfg.spanOpts, opts...)
+	}
+}
+
+// WithDynamicResourceNamer automatically populates the name of a resource from the Method and URL.Path of the
+// inbound request.
+func WithDynamicResourceNamer() Option {
+	return WithResourceNamer(func(req *http.Request) string {
+		return req.Method + " " + req.URL.Path
+	})
+}
+
+// WithStaticResourceNamer populates the name of a resource with a static string.
+func WithStaticResourceNamer(name string) Option {
+	return WithResourceNamer(func(req *http.Request) string {
+		return name
+	})
+}
+
+// WithResourceNamer populates the name of a resource based on a custom function.
+func WithResourceNamer(namer func(req *http.Request) string) Option {
+	return func(cfg *config) {
+		cfg.resourceNamer = namer
 	}
 }
 
